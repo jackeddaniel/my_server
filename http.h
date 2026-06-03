@@ -18,3 +18,5 @@ struct http_response {
 http_response create_response(int status_code, const string& body, const string& content_type);
 string build_response(const http_response& resp);
 
+//file_helpers.cpp
+string html_to_string(const string& path);

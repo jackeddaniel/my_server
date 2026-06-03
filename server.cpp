@@ -141,7 +141,7 @@ int main() {
             cout<<endl;
             cout<<"Sending the response"<<endl;
 
-            string body = "<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello world</h1></body></html>";
+            string body = html_to_string("index.html");
 
             http_response resp = create_response(200, body, "text/html");
             string response = build_response(resp);

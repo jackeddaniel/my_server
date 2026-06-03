@@ -12,6 +12,7 @@
 
 #define PORT "3490"
 #define BACKLOG 10
+#define MAXDATASIZE 100
 
 using namespace std;
 
@@ -43,6 +44,8 @@ int main() {
     int yes = 1;
     char s[INET6_ADDRSTRLEN];
     int rv;
+
+    char recv_buf[MAXDATASIZE];
 
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -102,7 +105,7 @@ int main() {
         exit(1);
     }
     
-    cout<<"Server: waitinf for connections"<<endl;
+    cout<<"Server: waiting for connections"<<endl;
 
     while(1) {
         sin_size = sizeof(their_addr);
@@ -116,9 +119,34 @@ int main() {
         inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr*)& their_addr), s, sizeof(s));
         cout<<"Server got connection from: "<<s<<endl;
 
-        if(!fork()) {
+        int pid = fork();
+        
+        if(pid == -1) {
+            perror("fork");
+        } else if(pid == 0) {
             close(sockfd);
-            const char* response = "HTTP/1.1 200 OK\r\n\r\n<html><body>Hello world</body></html>";
+            const char* body = "<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello world</h1></body></html>";
+            char response[512];
+            snprintf(response, sizeof(response),
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/html\r\n"
+                "Content-Length: %zu\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "%s",
+                strlen(body), body);
+            int numbytes;
+            if((numbytes = recv(new_fd, recv_buf, MAXDATASIZE-1, 0)) == -1) {
+                cout<<"recv error"<<endl;
+                perror("recv");
+                exit(1);
+            }
+
+            recv_buf[numbytes] = '\0';
+            cout<<"The message recieved from the browser"<<endl;
+            cout<<recv_buf<<endl;
+            cout<<endl;
+            cout<<"Sending the response"<<endl;
 
             if(send(new_fd, response, strlen(response), 0) == -1) {
                 cout<<"Send error"<<endl;
@@ -126,9 +154,10 @@ int main() {
             }
             close(new_fd);
             exit(0);
-        }
 
-        close(new_fd);
+        } else {
+            close(new_fd);
+        }
     }
 
     return 0;

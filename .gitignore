@@ -1,1 +1,11 @@
+# Compiled executables
 *.out
+server
+client
+
+# Object files and build artifacts
+*.o
+*.a
+*.so
+*.d
+

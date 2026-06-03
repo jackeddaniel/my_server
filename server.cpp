@@ -9,6 +9,9 @@
 #include <signal.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <string>
+
+#include "http.h"
 
 #define PORT "3490"
 #define BACKLOG 10
@@ -125,16 +128,6 @@ int main() {
             perror("fork");
         } else if(pid == 0) {
             close(sockfd);
-            const char* body = "<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello world</h1></body></html>";
-            char response[512];
-            snprintf(response, sizeof(response),
-                "HTTP/1.1 200 OK\r\n"
-                "Content-Type: text/html\r\n"
-                "Content-Length: %zu\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "%s",
-                strlen(body), body);
             int numbytes;
             if((numbytes = recv(new_fd, recv_buf, MAXDATASIZE-1, 0)) == -1) {
                 cout<<"recv error"<<endl;
@@ -148,7 +141,12 @@ int main() {
             cout<<endl;
             cout<<"Sending the response"<<endl;
 
-            if(send(new_fd, response, strlen(response), 0) == -1) {
+            string body = "<!DOCTYPE html><html><head><title>Hello</title></head><body><h1>Hello world</h1></body></html>";
+
+            http_response resp = create_response(200, body, "text/html");
+            string response = build_response(resp);
+
+            if(send(new_fd, response.c_str(), strlen(response.c_str()), 0) == -1) {
                 cout<<"Send error"<<endl;
                 perror("send");
             }

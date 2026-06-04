@@ -14,6 +14,14 @@ struct http_response {
     string body;
 };
 
+//http request struct
+struct http_request {
+    string req_method;
+    string path;
+    map<string, string> headers;
+    string body;
+};
+
 //http_helpers.cpp
 http_response create_response(int status_code, const string& body, const string& content_type);
 string build_response(const http_response& resp);

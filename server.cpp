@@ -15,7 +15,7 @@
 
 #define PORT "3490"
 #define BACKLOG 10
-#define MAXDATASIZE 100
+#define MAXDATASIZE 1000
 
 using namespace std;
 
@@ -135,9 +135,11 @@ int main() {
                 exit(1);
             }
 
-            recv_buf[numbytes] = '\0';
+            //recv_buf[numbytes] = '\0';
+            string recv_str = recv_buf;
+
             cout<<"The message recieved from the browser"<<endl;
-            cout<<recv_buf<<endl;
+            cout<<recv_str<<endl;
             cout<<endl;
             cout<<"Sending the response"<<endl;
 

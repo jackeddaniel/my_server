@@ -91,7 +91,7 @@ string build_response(const http_response& resp) {
        rp += key;
        rp += ": ";
        rp += value;
-       rp += "\t\n";
+       rp += "\r\n";
     }
     rp += "\r\n";
     rp += resp.body;

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About — My Server</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            min-height: 100vh;
+            background: #0d0d0d;
+            color: #00ff88;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .terminal {
+            width: 100%;
+            max-width: 680px;
+            border: 1px solid #00ff88;
+            border-radius: 6px;
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.15), inset 0 0 60px rgba(0, 0, 0, 0.8);
+        }
+
+        .titlebar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #00ff88;
+            border-radius: 6px 6px 0 0;
+        }
+
+        .btn {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .btn-red   { background: #ff5f57; }
+        .btn-yellow{ background: #ffbd2e; }
+        .btn-green { background: #28c840; }
+
+        .titlebar-text {
+            margin-left: auto;
+            margin-right: auto;
+            font-size: 0.75rem;
+            color: #666;
+            letter-spacing: 0.05em;
+        }
+
+        .body {
+            padding: 28px 32px 36px;
+        }
+
+        .prompt {
+            color: #555;
+            margin-bottom: 20px;
+            font-size: 0.85rem;
+        }
+
+        .prompt span {
+            color: #00ff88;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            color: #ffffff;
+            margin-bottom: 6px;
+        }
+
+        .tagline {
+            color: #555;
+            font-size: 0.8rem;
+            margin-bottom: 32px;
+        }
+
+        .section {
+            margin-bottom: 28px;
+        }
+
+        .section-label {
+            font-size: 0.7rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #00ff88;
+            margin-bottom: 10px;
+            opacity: 0.7;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 6px;
+            font-size: 0.85rem;
+        }
+
+        .key {
+            color: #555;
+            min-width: 130px;
+        }
+
+        .val {
+            color: #e0e0e0;
+        }
+
+        .val.green  { color: #00ff88; }
+        .val.yellow { color: #ffbd2e; }
+
+        .divider {
+            border: none;
+            border-top: 1px dashed #222;
+            margin: 24px 0;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 9px;
+            height: 1.1em;
+            background: #00ff88;
+            vertical-align: text-bottom;
+            animation: blink 1.1s step-end infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0; }
+        }
+
+        a {
+            color: #00ff88;
+            text-decoration: none;
+        }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="terminal">
+        <div class="titlebar">
+            <div class="btn btn-red"></div>
+            <div class="btn btn-yellow"></div>
+            <div class="btn btn-green"></div>
+            <span class="titlebar-text">server@localhost — about</span>
+        </div>
+        <div class="body">
+            <div class="prompt">
+                <span>user@localhost</span>:~$ ./about --verbose
+            </div>
+
+            <h1>my_server</h1>
+            <div class="tagline"># a minimal HTTP server written from scratch in C++</div>
+
+            <hr class="divider">
+
+            <div class="section">
+                <div class="section-label">build info</div>
+                <div class="row"><span class="key">language</span><span class="val">C++17</span></div>
+                <div class="row"><span class="key">socket layer</span><span class="val">POSIX sockets (sys/socket.h)</span></div>
+                <div class="row"><span class="key">dependencies</span><span class="val green">none</span></div>
+                <div class="row"><span class="key">binary</span><span class="val">server.out</span></div>
+            </div>
+
+            <div class="section">
+                <div class="section-label">features</div>
+                <div class="row"><span class="key">HTTP/1.1 parsing</span><span class="val green">✓  yes</span></div>
+                <div class="row"><span class="key">static file serving</span><span class="val green">✓  yes</span></div>
+                <div class="row"><span class="key">response headers</span><span class="val green">✓  yes</span></div>
+                <div class="row"><span class="key">TLS / HTTPS</span><span class="val yellow">—  not yet</span></div>
+                <div class="row"><span class="key">concurrent clients</span><span class="val yellow">—  not yet</span></div>
+            </div>
+
+            <div class="section">
+                <div class="section-label">pages</div>
+                <div class="row"><span class="key">/</span><span class="val"><a href="/index.html">index.html</a></span></div>
+                <div class="row"><span class="key">/about.html</span><span class="val green">← you are here</span></div>
+            </div>
+
+            <hr class="divider">
+
+            <div class="prompt" style="margin-bottom:0">
+                <span>user@localhost</span>:~$ <span class="cursor"></span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

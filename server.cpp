@@ -138,15 +138,30 @@ int main() {
             //recv_buf[numbytes] = '\0';
             string recv_str = recv_buf;
 
+            //building the request struct
+            http_request request = build_request(recv_str);
+
+            http_response resp;
+            string path;
+
+            if(path_builder(request.path, path) == 0) {
+                resp= create_response(404, "", "text/html");
+            } else {
+                string body = html_to_string(path);
+                resp = create_response(200, body, "text/html");
+            }
+
+            string response = build_response(resp);
             cout<<"The message recieved from the browser"<<endl;
             cout<<recv_str<<endl;
             cout<<endl;
             cout<<"Sending the response"<<endl;
-
+            /*
             string body = html_to_string("index.html");
 
             http_response resp = create_response(200, body, "text/html");
             string response = build_response(resp);
+            */
 
             if(send(new_fd, response.c_str(), strlen(response.c_str()), 0) == -1) {
                 cout<<"Send error"<<endl;

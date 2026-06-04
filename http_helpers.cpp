@@ -70,6 +70,12 @@ http_request build_request(string req) {
 
 http_response create_response(int status_code, const string& body, const string& content_type) {
     http_response response;
+    if(status_code == 404) {
+        response.status_code = status_code;
+        response.status_text = "NOT FOUND";
+        response.headers["Connection"] = "close";
+        return response;
+    }
     response.status_code = status_code;
     response.status_text = "OK";
     response.body = body;
@@ -117,8 +123,7 @@ void tester(string s) {
     }
 
 }
-
-int main() {
+void test() {
     cout<<"Testing responses"<<endl;
 
     http_response dummy_res = create_response(200, "<html><body>hello world</body></html>", "text/html");
@@ -143,4 +148,3 @@ location=local)http";
     print_request(dummy_req);
 
 }
-

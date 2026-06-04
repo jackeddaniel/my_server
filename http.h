@@ -25,6 +25,10 @@ struct http_request {
 //http_helpers.cpp
 http_response create_response(int status_code, const string& body, const string& content_type);
 string build_response(const http_response& resp);
+http_request build_request(string req);
+void print_request(http_request req);
 
 //file_helpers.cpp
 string html_to_string(const string& path);
+int path_builder(const string& req_path, string& path);
+

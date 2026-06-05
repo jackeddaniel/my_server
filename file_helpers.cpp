@@ -4,8 +4,19 @@
 #include <sstream>
 #include <string>
 #include <filesystem>
+#include <unordered_map>
 
 using namespace std;
+
+unordered_map<string, string> mime_types = { 
+    {".html" ,"text/html"},
+    {".css", "text/css"},
+    {".js", "application/js"},
+    {".png", "image/png"},
+    {".jpg", "image/jpeg"},
+    {".jpeg", "image/jpeg"},
+    {".ico", "image/x-icon"}
+};
 
 string html_to_string(const string& path) {
     ifstream file(path);
@@ -60,6 +71,21 @@ int path_builder(const string& req_path, string& path) {
     }
 }
 
+string infer_content_type(const string& path) {
+    //this assumes the path is valid and the string is safe to parse
+
+    int i = path.size() - 1;
+
+    while(i > 0 && path[i] != '.') i--;
+
+
+    string ext = path.substr(i);
+    cout<<ext<<endl;
+    if(mime_types.find(ext) == mime_types.end()) return "";
+
+    return mime_types[ext];
+}
+
 void test_func() {
     string s = html_to_string("index.html");
     cout<<s;
@@ -70,11 +96,9 @@ int main() {
 
     int res;
 
-    string path = "../catamaran/../../vo/../../xoxo/../xoox";
-    res = valid_path(path);
+    string path = "../catamaran/../../vo/../../xoxo/../xoo.py";
 
-    if(res) cout<<"Path valid"<<endl;
-    if(!res) cout<<"Path invalid"<<endl;
+    cout<<infer_content_type(path)<<endl;
     
 }
 */

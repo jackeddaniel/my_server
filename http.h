@@ -31,4 +31,5 @@ void print_request(http_request req);
 //file_helpers.cpp
 string html_to_string(const string& path);
 int path_builder(const string& req_path, string& path);
+string infer_content_type(const string& path);
 

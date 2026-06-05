@@ -148,7 +148,7 @@ int main() {
                 resp= create_response(404, "", "text/html");
             } else {
                 string body = html_to_string(path);
-                resp = create_response(200, body, "text/html");
+                resp = create_response(200, body, infer_content_type(path));
             }
 
             string response = build_response(resp);

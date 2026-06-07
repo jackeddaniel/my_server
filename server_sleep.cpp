@@ -138,13 +138,39 @@ int main() {
             recv_buf[numbytes] = '\0';
             string recv_str = recv_buf;
 
+            cout<<"The message recieved from the browser"<<endl;
+            cout<<"The size of the message recieved is: "<<recv_str.size()<<" bytes"<<endl;
+            cout<<recv_str<<endl;
+            cout<<"=========================="<<endl;
+            cout<<endl;
+            cout<<"Sleeping for 3 seconds"<<endl;
+
+            sleep(3);  // client's part2 arrives here and sits in kernel buffer
+
+            // Second recv — gets whatever arrived during sleep
+            memset(recv_buf, 0, MAXDATASIZE);
+            numbytes = recv(new_fd, recv_buf, MAXDATASIZE-1, MSG_DONTWAIT);
+            if(numbytes > 0) {
+                recv_buf[numbytes] = '\0';
+                recv_str += recv_buf;
+                cout << "Second recv got " << numbytes << " bytes: " << endl;
+                cout << recv_buf << endl;
+            } else {
+                cout << "Second recv got nothing (bug: processing partial request!)" << endl;
+            }
+
+            cout << "Total received: " << recv_str.size() << " bytes" << endl;
+
+
             //building the request struct
             http_request request = build_request(recv_str);
 
             http_response resp;
             string path;
-
-            if(path_builder(request.path, path) == 0) {
+            if(request.headers.find("Host") == request.headers.end()) {
+                cout<<"Missing host header - bad request!"<<endl;
+                resp = create_response(400, "Bad Request", "text/html");
+            }else if(path_builder(request.path, path) == 0) {
                 resp= create_response(404, "", "text/html");
             } else {
                 string body = html_to_string(path);
@@ -152,13 +178,6 @@ int main() {
             }
 
             string response = build_response(resp);
-            cout<<"The message recieved from the browser"<<endl;
-            cout<<"The size of the message recieved is: "<<recv_str.size()<<" bytes"<<endl;
-            cout<<recv_str<<endl;
-            cout<<"=========================="<<endl;
-            cout<<endl;
-            cout<<"Sending the response"<<endl;
-
             if(send(new_fd, response.c_str(), strlen(response.c_str()), 0) == -1) {
                 cout<<"Send error"<<endl;
                 perror("send");

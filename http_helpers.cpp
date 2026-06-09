@@ -61,6 +61,7 @@ http_request build_request(string req) {
         col_pos++;
         while(line[col_pos] == ' ') col_pos++;
         string val = line.substr(col_pos);
+        if(!val.empty() && val.back() == '\r') val.pop_back();
 
         request.headers[key] = val;
 

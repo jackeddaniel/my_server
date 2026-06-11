@@ -25,6 +25,8 @@
 
 using namespace std;
 
+map<int, conn_state> conn_state_map;
+
 const char* inet_ntop2(void *addr, char *buf, size_t size) {
     struct sockaddr_storage *sas = (sockaddr_storage*)addr;
     struct sockaddr_in *sa4;
@@ -110,7 +112,7 @@ void del_from_pfds(vector<struct pollfd> &pfds, int i) {
     pfds.pop_back();
 }
 
-void handle_new_connections(int listener, vector<struct pollfd> &pfds) {
+void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, conn_state> &conn_state_map) {
     cout<<"Handling a new connection"<<endl;
     struct sockaddr_storage remoteaddr; //client addr
     socklen_t addrlen;
@@ -125,87 +127,99 @@ void handle_new_connections(int listener, vector<struct pollfd> &pfds) {
     if(newfd == -1) {
     } else {
         add_to_pfds(pfds, newfd);
+        conn_state_map[newfd] = {"", string::npos, string::npos};
 
         cout<<"pollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
 }
 
-void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds) {
+void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map) {
     cout<<"Handling a connection"<<endl;
-    //close(sockfd);
-    string recv_str;
     char temp_buf[MAXDATASIZE];
     size_t header_end = string::npos;
     size_t content_length= 0;
+    int recv_complete = 0;
 
-    while(true) {
-        int numbytes = recv(newfd, temp_buf, sizeof(temp_buf)-1, 0);
-        if(numbytes == -1) {perror("recv"); exit(1);}
-        if(numbytes == 0) break;
+    conn_state &fd_state = conn_state_map[newfd];
 
-        recv_str.append(temp_buf, numbytes);
+    int numbytes = recv(newfd, temp_buf, sizeof(temp_buf) - 1, 0);
+    if(numbytes == -1) {perror("recv"); exit(1);}
+    if(numbytes == 0) return;
 
-        if(header_end == string::npos) {
-            header_end = recv_str.find("\r\n\r\n");
+    fd_state.recv_buf.append(temp_buf, numbytes);
 
-            if(header_end != string::npos) {
-                size_t cl_pos = recv_str.find("Content-Length");
-                
-                if(cl_pos != string::npos) {
-                    size_t val_start = recv_str.find(": ", cl_pos) + 2;
-                    size_t val_end = recv_str.find("\r\n", val_start);
-                    content_length = stoi(recv_str.substr(val_start, val_end - val_start));
-                }
+    if(fd_state.header_end == string::npos) {
+        fd_state.header_end = fd_state.recv_buf.find("\r\n\r\n");
+
+        if(fd_state.header_end != string::npos) {
+            size_t cl_pos = fd_state.recv_buf.find("Content-Length");
+            if(cl_pos != string::npos) {
+                size_t val_start = fd_state.recv_buf.find(": ", cl_pos) + 2;
+                size_t val_end = fd_state.recv_buf.find("\r\n", val_start);
+                content_length = stoi(fd_state.recv_buf.substr(val_start, val_end - val_start));
+                fd_state.content_length = content_length;
             }
         }
+    }
 
-        if(header_end != string::npos) {
-            size_t total_expected = header_end + 4 + content_length; // the 4 is to accomodate for the chards \r\n\r\n
-            if(recv_str.size() >= total_expected) break;
+    if(fd_state.header_end != string::npos) {
+        size_t total_expected;
+
+        total_expected = fd_state.header_end + 4;
+        if(fd_state.content_length != string::npos) {
+            total_expected += fd_state.content_length;
         }
+        
+        if(fd_state.recv_buf.size() >= total_expected) recv_complete = 1;
     }
 
-    http_request request = build_request(recv_str);
-    http_response resp;
-    string path;
+    if(recv_complete) {
+        //send the reponse
+        http_request request = build_request(fd_state.recv_buf);
+        http_response resp;
+        string path;
 
-    if(path_builder(request.path, path) == 0) {
-        resp= create_response(404, "", "text/html");
-    } else {
-        string body = html_to_string(path);
-        resp = create_response(200, body, infer_content_type(path));
-    }
-
-    string response = build_response(resp);
-    cout<<"The message recieved from the browser"<<endl;
-    cout<<"The size of the message recieved is: "<<recv_str.size()<<" bytes"<<endl;
-    cout<<recv_str<<endl;
-    cout<<"=========================="<<endl;
-    cout<<endl;
-    cout<<"Sending the response"<<endl;
-
-    size_t total_sent = 0;
-    size_t response_len = response.size();
-    while(total_sent < response_len) {
-        int sent = send(newfd, response.c_str() + total_sent, response_len - total_sent, 0);
-        if(sent == -1) {
-            perror("send");
-            break;
+        if(path_builder(request.path, path) == 0) {
+            resp= create_response(404, "", "text/html");
+        } else {
+            string body = html_to_string(path);
+            resp = create_response(200, body, infer_content_type(path));
         }
-        total_sent += sent;
-    }
 
-    close(newfd);
-    int index = -1;
+        // the below lines to sleep are just to test the concurrency of our server if poll is working or not. when we uncomment, on multiple requests we see that poll() work.
+        //cout<<"should sleep now"<<endl;
+        //sleep(5);
+        string response = build_response(resp);
+        cout<<"The message recieved from the browser"<<endl;
+        cout<<"The size of the message recieved is: "<<fd_state.recv_buf.size()<<" bytes"<<endl;
+        cout<<fd_state.recv_buf<<endl;
+        cout<<"=========================="<<endl;
+        cout<<endl;
+        cout<<"Sending the response"<<endl;
 
-    for(int i = 0; i < pfds.size(); i++ ) {
-        if(pfds[i].fd == newfd) {
-            index = i;
-            break;
+        size_t total_sent = 0;
+        size_t response_len = response.size();
+        while(total_sent < response_len) {
+            int sent = send(newfd, response.c_str() + total_sent, response_len - total_sent, 0);
+            if(sent == -1) {
+                perror("send");
+                break;
+            }
+            total_sent += sent;
         }
-    }
 
-    del_from_pfds(pfds, index);
+        close(newfd);
+        int index = -1;
+
+        for(int i = 0; i < pfds.size(); i++ ) {
+            if(pfds[i].fd == newfd) {
+                index = i;
+                break;
+            }
+        }
+        conn_state_map.erase(newfd);
+        del_from_pfds(pfds, index);
+    }
     //exit(0);
 }
 
@@ -231,13 +245,13 @@ int main() {
         if(ready_fds == 0) continue;
         for(int i = 0; i < pfds.size(); i++) {
             if(pfds[i].fd == sockfd && pfds[i].revents & POLLIN) {
-                handle_new_connections(sockfd, pfds);
+                handle_new_connections(sockfd, pfds, conn_state_map);
                 continue;
 
             }
 
             if(pfds[i].revents & POLLIN) {
-                handle_connection(sockfd, pfds[i].fd, pfds);
+                handle_connection(sockfd, pfds[i].fd, pfds, conn_state_map);
             }
         }
     }

@@ -6,6 +6,13 @@
 
 using namespace std;
 
+//connection state struct
+struct conn_state {
+    string recv_buf;
+    size_t header_end;
+    size_t content_length;
+};
+
 //http response struct
 struct http_response {
     int status_code;

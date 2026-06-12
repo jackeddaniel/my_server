@@ -224,6 +224,9 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
 }
 
 int main() {
+    //to handle clients disconnecting
+    signal(SIGPIPE, SIG_IGN);
+
     int sockfd, newfd;
     sockfd = get_listener_socket();
 

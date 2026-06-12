@@ -1,4 +1,5 @@
 #include <asm-generic/socket.h>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -13,6 +14,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <poll.h>
+#include <fcntl.h>
 
 #include <vector>
 #include <string>
@@ -45,6 +47,23 @@ const char* inet_ntop2(void *addr, char *buf, size_t size) {
             return NULL;
     }
     return inet_ntop(sas->ss_family, src, buf, size);
+}
+
+int set_socket_to_non_blocking(int sockfd) {
+    int flags = fcntl(sockfd, F_GETFL, 0);
+
+    if(flags == -1) {
+        cerr<<"Error getting flags of the socket"<<endl;
+        return -1;
+    }
+    flags = flags | O_NONBLOCK;
+
+    if(fcntl(sockfd, F_SETFL, flags) == -1) { 
+        cerr<<"Error setting the socket to non-blocking"<<endl;
+        return -1;
+    }
+
+    return 1;
 }
 
 int get_listener_socket() {
@@ -126,6 +145,11 @@ void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, 
 
     if(newfd == -1) {
     } else {
+        if(set_socket_to_non_blocking(newfd) == -1) {
+            cerr<<"Failed to set the socket to non blocking"<<endl;
+            close(newfd);
+            return;
+        }
         add_to_pfds(pfds, newfd);
         conn_state_map[newfd] = {"", string::npos, string::npos};
 
@@ -143,7 +167,25 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
     conn_state &fd_state = conn_state_map[newfd];
 
     int numbytes = recv(newfd, temp_buf, sizeof(temp_buf) - 1, 0);
-    if(numbytes == -1) {perror("recv"); exit(1);}
+    if(numbytes == -1) {
+        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
+        } else {
+            perror("recv"); 
+            close(newfd);
+            conn_state_map.erase(newfd);
+            int index = -1;
+            for(int i = 0; i < pfds.size(); i++) {
+                if(pfds[i].fd == newfd) {
+                    index = i;
+                    break;
+                }
+            }
+
+            del_from_pfds(pfds, index);
+            return;
+        }
+    }
     if(numbytes == 0) return;
 
     fd_state.recv_buf.append(temp_buf, numbytes);

@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <sys/epoll.h>
 
 #include <vector>
 #include <string>

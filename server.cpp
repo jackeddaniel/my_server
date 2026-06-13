@@ -186,7 +186,10 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
             return;
         }
     }
-    if(numbytes == 0) return;
+    //this means the request is done
+    if(numbytes == 0) {
+        recv_complete = 1;
+    };
 
     fd_state.recv_buf.append(temp_buf, numbytes);
 

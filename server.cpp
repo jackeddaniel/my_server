@@ -151,7 +151,7 @@ void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, 
             return;
         }
         add_to_pfds(pfds, newfd);
-        conn_state_map[newfd] = {"", string::npos, string::npos};
+        conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
 
         cout<<"pollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
@@ -162,7 +162,6 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
     char temp_buf[MAXDATASIZE];
     size_t header_end = string::npos;
     size_t content_length= 0;
-    int recv_complete = 0;
 
     conn_state &fd_state = conn_state_map[newfd];
 
@@ -188,13 +187,22 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
     }
     //this means the request is done
     if(numbytes == 0) {
-        recv_complete = 1;
+        fd_state.state = connection_state::SENDING;
     };
 
     fd_state.recv_buf.append(temp_buf, numbytes);
 
     if(fd_state.header_end == string::npos) {
-        fd_state.header_end = fd_state.recv_buf.find("\r\n\r\n");
+        size_t search_start;
+
+        if(fd_state.parse_offset > 3) {
+            search_start = fd_state.parse_offset - 3;
+        } else {
+            search_start = 0;
+        }
+
+        fd_state.header_end = fd_state.recv_buf.find("\r\n\r\n", search_start);
+        fd_state.parse_offset = fd_state.recv_buf.size();
 
         if(fd_state.header_end != string::npos) {
             size_t cl_pos = fd_state.recv_buf.find("Content-Length");
@@ -215,10 +223,10 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
             total_expected += fd_state.content_length;
         }
         
-        if(fd_state.recv_buf.size() >= total_expected) recv_complete = 1;
+        if(fd_state.recv_buf.size() >= total_expected) fd_state.state = connection_state::SENDING;
     }
 
-    if(recv_complete) {
+    if(fd_state.state == connection_state::SENDING) {
         //send the reponse
         http_request request = build_request(fd_state.recv_buf);
         http_response resp;

@@ -5,12 +5,23 @@
 #include <map>
 
 using namespace std;
-
+    
+enum class connection_state { 
+    READING, 
+    SENDING,
+    CLOSING
+};
 //connection state struct
 struct conn_state {
     string recv_buf;
+    size_t parse_offset;
     size_t header_end;
     size_t content_length;
+
+    string send_buf;
+    size_t send_offset;
+
+    connection_state state;
 };
 
 //http response struct

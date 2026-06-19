@@ -152,18 +152,15 @@ void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, 
             return;
         }
         add_to_pfds(pfds, newfd);
-        conn_state_map[newfd] = {"", string::npos, string::npos};
+        conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
 
         cout<<"pollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
 }
 
-void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map) {
+void handle_recv(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map, int pfd_index) {
     cout<<"Handling a connection"<<endl;
     char temp_buf[MAXDATASIZE];
-    size_t header_end = string::npos;
-    size_t content_length= 0;
-    int recv_complete = 0;
 
     conn_state &fd_state = conn_state_map[newfd];
 
@@ -171,35 +168,40 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
     if(numbytes == -1) {
         if(errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
-        } else {
-            perror("recv"); 
-            close(newfd);
+        } else {            
+            del_from_pfds(pfds, pfd_index);
             conn_state_map.erase(newfd);
-            int index = -1;
-            for(int i = 0; i < pfds.size(); i++) {
-                if(pfds[i].fd == newfd) {
-                    index = i;
-                    break;
-                }
-            }
-
-            del_from_pfds(pfds, index);
+            close(newfd);
             return;
         }
     }
-    if(numbytes == 0) return;
+    //this means the request is done
+    if(numbytes == 0) {
+        fd_state.state = connection_state::SENDING;
+        pfds[pfd_index].events = POLLOUT;
+        return;
+    };
 
     fd_state.recv_buf.append(temp_buf, numbytes);
 
     if(fd_state.header_end == string::npos) {
-        fd_state.header_end = fd_state.recv_buf.find("\r\n\r\n");
+        size_t search_start;
+
+        if(fd_state.parse_offset > 3) {
+            search_start = fd_state.parse_offset - 3;
+        } else {
+            search_start = 0;
+        }
+
+        fd_state.header_end = fd_state.recv_buf.find("\r\n\r\n", search_start);
+        fd_state.parse_offset = fd_state.recv_buf.size();
 
         if(fd_state.header_end != string::npos) {
             size_t cl_pos = fd_state.recv_buf.find("Content-Length");
             if(cl_pos != string::npos) {
                 size_t val_start = fd_state.recv_buf.find(": ", cl_pos) + 2;
                 size_t val_end = fd_state.recv_buf.find("\r\n", val_start);
-                content_length = stoi(fd_state.recv_buf.substr(val_start, val_end - val_start));
+                int content_length = stoi(fd_state.recv_buf.substr(val_start, val_end - val_start));
                 fd_state.content_length = content_length;
             }
         }
@@ -213,57 +215,51 @@ void handle_connection(int sockfd, int newfd, vector<struct pollfd>& pfds, map<i
             total_expected += fd_state.content_length;
         }
         
-        if(fd_state.recv_buf.size() >= total_expected) recv_complete = 1;
-    }
+        if(fd_state.recv_buf.size() >= total_expected) {
+            fd_state.state = connection_state::SENDING;
+            http_request rq = build_request(fd_state.recv_buf);
+            http_response rp;
+            string path;
 
-    if(recv_complete) {
-        //send the reponse
-        http_request request = build_request(fd_state.recv_buf);
-        http_response resp;
-        string path;
-
-        if(path_builder(request.path, path) == 0) {
-            resp= create_response(404, "", "text/html");
-        } else {
-            string body = html_to_string(path);
-            resp = create_response(200, body, infer_content_type(path));
-        }
-
-        // the below lines to sleep are just to test the concurrency of our server if poll is working or not. when we uncomment, on multiple requests we see that poll() work.
-        //cout<<"should sleep now"<<endl;
-        //sleep(5);
-        string response = build_response(resp);
-        cout<<"The message recieved from the browser"<<endl;
-        cout<<"The size of the message recieved is: "<<fd_state.recv_buf.size()<<" bytes"<<endl;
-        cout<<fd_state.recv_buf<<endl;
-        cout<<"=========================="<<endl;
-        cout<<endl;
-        cout<<"Sending the response"<<endl;
-
-        size_t total_sent = 0;
-        size_t response_len = response.size();
-        while(total_sent < response_len) {
-            int sent = send(newfd, response.c_str() + total_sent, response_len - total_sent, 0);
-            if(sent == -1) {
-                perror("send");
-                break;
+            if(path_builder(rq.path, path) == 0) {
+                rp = create_response(404, "", "text/html");
+            } else {
+                string body = html_to_string(path);
+                rp = create_response(200, body, infer_content_type(path));
             }
-            total_sent += sent;
+            string response = build_response(rp);
+            fd_state.send_buf = response;
+            //changing the interest of the pollfd 
+            pfds[pfd_index].events = POLLOUT;
+        }
+    }
+}
+
+void handle_send(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map, int pfd_index) {
+    conn_state &fd_state = conn_state_map[newfd];
+
+    size_t remaining = fd_state.send_buf.size() - fd_state.send_offset;
+    int sent = send(newfd, fd_state.send_buf.c_str() + fd_state.send_offset, remaining, 0);
+
+    if(sent == -1) {
+        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
         }
 
+        perror("send");
         close(newfd);
-        int index = -1;
-
-        for(int i = 0; i < pfds.size(); i++ ) {
-            if(pfds[i].fd == newfd) {
-                index = i;
-                break;
-            }
-        }
         conn_state_map.erase(newfd);
-        del_from_pfds(pfds, index);
+        del_from_pfds(pfds, pfd_index);
+        return;
     }
-    //exit(0);
+
+    fd_state.send_offset += sent;
+    
+    if(fd_state.send_offset == fd_state.send_buf.size()) {
+        close(newfd);
+        conn_state_map.erase(newfd);
+        del_from_pfds(pfds, pfd_index);
+    }
 }
 
 int main() {
@@ -295,10 +291,15 @@ int main() {
                 continue;
 
             }
-
+            
+            int old_size = pfds.size();
             if(pfds[i].revents & POLLIN) {
-                handle_connection(sockfd, pfds[i].fd, pfds, conn_state_map);
+                handle_recv(sockfd, pfds[i].fd, pfds, conn_state_map, i);
+            } else if(pfds[i].revents & POLLOUT) {
+                handle_send(sockfd, pfds[i].fd, pfds, conn_state_map, i);
             }
+
+            if(pfds.size() < old_size) i--;
         }
     }
 

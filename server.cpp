@@ -25,6 +25,7 @@
 #define PORT "3490"
 #define BACKLOG 10
 #define MAXDATASIZE 1000
+#define MAX_EVENTS 64
 
 using namespace std;
 
@@ -113,26 +114,15 @@ int get_listener_socket() {
     return listener;
 
 }
-
-void add_to_pfds(vector<struct pollfd> &pfds, int newfd) {
-    struct pollfd pfd;
-    cout<<"added to pfds"<<endl;
-
-    pfd.fd = newfd;
-    pfd.events = POLLIN;
-    pfd.revents = 0;
-
-    pfds.push_back(pfd);
-
+void close_connection(int epfd, int fd, map<int, conn_state>& conn_state_map) {
+    if(epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+        perror("epoll_ctl: deletion");
+    }
+    conn_state_map.erase(fd);
+    close(fd);
 }
 
-void del_from_pfds(vector<struct pollfd> &pfds, int i) {
-    cout<<"removed from pfds"<<endl;
-    pfds[i] = pfds.back();
-    pfds.pop_back();
-}
-
-void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, conn_state> &conn_state_map) {
+void handle_new_connections(int epfd, int listener, map<int, conn_state> &conn_state_map) {
     cout<<"Handling a new connection"<<endl;
     struct sockaddr_storage remoteaddr; //client addr
     socklen_t addrlen;
@@ -151,34 +141,36 @@ void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, 
             close(newfd);
             return;
         }
-        add_to_pfds(pfds, newfd);
+        struct epoll_event ev;
+        ev.events = EPOLLIN;
+        ev.data.fd = newfd;
+        if(epoll_ctl(epfd, EPOLL_CTL_ADD, newfd, &ev) == -1) {
+            perror("epoll_ctl: addition");
+        }
         conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
 
-        cout<<"pollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
+        cout<<"epollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
 }
 
-void handle_recv(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map, int pfd_index) {
+void handle_recv(int epfd, int fd, map<int, conn_state> &conn_state_map) {
     cout<<"Handling a connection"<<endl;
     char temp_buf[MAXDATASIZE];
 
-    conn_state &fd_state = conn_state_map[newfd];
+    conn_state &fd_state = conn_state_map[fd];
 
-    int numbytes = recv(newfd, temp_buf, sizeof(temp_buf) - 1, 0);
+    int numbytes = recv(fd, temp_buf, sizeof(temp_buf) - 1, 0);
     if(numbytes == -1) {
         if(errno == EAGAIN || errno == EWOULDBLOCK) {
             return;
         } else {            
-            del_from_pfds(pfds, pfd_index);
-            conn_state_map.erase(newfd);
-            close(newfd);
+            close_connection(epfd, fd, conn_state_map);
             return;
         }
     }
     //this means the request is done
     if(numbytes == 0) {
-        fd_state.state = connection_state::SENDING;
-        pfds[pfd_index].events = POLLOUT;
+        close_connection(epfd, fd, conn_state_map);
         return;
     };
 
@@ -230,16 +222,21 @@ void handle_recv(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, co
             string response = build_response(rp);
             fd_state.send_buf = response;
             //changing the interest of the pollfd 
-            pfds[pfd_index].events = POLLOUT;
+            struct epoll_event ev;
+            ev.events = EPOLLOUT;
+            ev.data.fd = fd;
+            if(epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev) == -1) {
+                perror("epoll_ctl: mod");
+            }
         }
     }
 }
 
-void handle_send(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map, int pfd_index) {
-    conn_state &fd_state = conn_state_map[newfd];
+void handle_send(int epfd, int fd, map<int, conn_state> &conn_state_map) {
+    conn_state &fd_state = conn_state_map[fd];
 
     size_t remaining = fd_state.send_buf.size() - fd_state.send_offset;
-    int sent = send(newfd, fd_state.send_buf.c_str() + fd_state.send_offset, remaining, 0);
+    int sent = send(fd, fd_state.send_buf.c_str() + fd_state.send_offset, remaining, 0);
 
     if(sent == -1) {
         if(errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -247,59 +244,79 @@ void handle_send(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, co
         }
 
         perror("send");
-        close(newfd);
-        conn_state_map.erase(newfd);
-        del_from_pfds(pfds, pfd_index);
+
+        close_connection(epfd, fd, conn_state_map);
         return;
     }
 
     fd_state.send_offset += sent;
     
     if(fd_state.send_offset == fd_state.send_buf.size()) {
-        close(newfd);
-        conn_state_map.erase(newfd);
-        del_from_pfds(pfds, pfd_index);
+        close(fd);
+        conn_state_map.erase(fd);
+        if(epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+            perror("epoll_ctl: deletion");
+        }
     }
 }
 
 int main() {
     //to handle clients disconnecting
     signal(SIGPIPE, SIG_IGN);
+    
+    //creating an epoll instance
+    int epfd = epoll_create1(0); 
+    if(epfd == -1) {
+        cout<<"Epoll creation error"<<endl;
+        perror("epoll");
+        exit(1);
+    }
 
     int sockfd, newfd;
     sockfd = get_listener_socket();
+    if(sockfd == -1) {
+        cerr<<"socket creation error"<<endl;
+        exit(1);
+    }
 
-    vector<struct pollfd> pfds;
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = sockfd;
+    if(epoll_ctl(epfd, EPOLL_CTL_ADD, sockfd, &ev) == -1) {
+        perror("epoll_ctl: add listener");
+        exit(1);
+    }
 
-    add_to_pfds(pfds, sockfd);
-    
+    struct epoll_event events[MAX_EVENTS];
    
     cout<<"Server: waiting for connections"<<endl;
 
     while(1) {
-        int ready_fds = poll(pfds.data(), pfds.size(), 1000);
+        int ready_fds = epoll_wait(epfd, events, MAX_EVENTS, -1);
+
         cout<<"ready_fds: "<<ready_fds<<endl;
         if(ready_fds == -1) {
-            perror("poll");
+            perror("epoll wait");
             cout<<"Poll failed"<<endl;
             break;
         }
         if(ready_fds == 0) continue;
-        for(int i = 0; i < pfds.size(); i++) {
-            if(pfds[i].fd == sockfd && pfds[i].revents & POLLIN) {
-                handle_new_connections(sockfd, pfds, conn_state_map);
+        for(int i = 0; i < ready_fds; i++) {
+            int fd = events[i].data.fd;
+            size_t re = events[i].events;
+
+            if(fd == sockfd) {
+                handle_new_connections(epfd, sockfd, conn_state_map);
                 continue;
-
             }
-            
-            int old_size = pfds.size();
-            if(pfds[i].revents & POLLIN) {
-                handle_recv(sockfd, pfds[i].fd, pfds, conn_state_map, i);
-            } else if(pfds[i].revents & POLLOUT) {
-                handle_send(sockfd, pfds[i].fd, pfds, conn_state_map, i);
+            if(re & (EPOLLHUP | EPOLLERR)) {
+                close_connection(epfd, fd, conn_state_map);
+                continue;
+            }else if(re & EPOLLIN) {
+                handle_recv(epfd, fd, conn_state_map);
+            } else if(re & EPOLLOUT) {
+                handle_send(epfd, fd, conn_state_map);
             }
-
-            if(pfds.size() < old_size) i--;
         }
     }
 

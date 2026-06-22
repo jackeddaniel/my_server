@@ -123,32 +123,38 @@ void close_connection(int epfd, int fd, map<int, conn_state>& conn_state_map) {
 }
 
 void handle_new_connections(int epfd, int listener, map<int, conn_state> &conn_state_map) {
-    cout<<"Handling a new connection"<<endl;
-    struct sockaddr_storage remoteaddr; //client addr
-    socklen_t addrlen;
-    int newfd;
+    while(true) {
+        cout<<"Handling a new connection"<<endl;
+        struct sockaddr_storage remoteaddr; //client addr
+        socklen_t addrlen;
+        int newfd;
+        char remoteIP[INET6_ADDRSTRLEN];
 
-    char remoteIP[INET6_ADDRSTRLEN];
+        addrlen = sizeof(remoteaddr);
 
-    addrlen = sizeof(remoteaddr);
-
-    newfd = accept(listener, (struct sockaddr*)&remoteaddr, &addrlen);
-
-    if(newfd == -1) {
-    } else {
+        newfd = accept(listener, (struct sockaddr*)&remoteaddr, &addrlen);
+        if(newfd == -1) {
+            if(errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }
+            perror("accept");
+            break;
+        }
         if(set_socket_to_non_blocking(newfd) == -1) {
             cerr<<"Failed to set the socket to non blocking"<<endl;
             close(newfd);
-            return;
+            continue;
         }
+
         struct epoll_event ev;
         ev.events = EPOLLIN;
         ev.data.fd = newfd;
         if(epoll_ctl(epfd, EPOLL_CTL_ADD, newfd, &ev) == -1) {
             perror("epoll_ctl: addition");
+            close(newfd);
+            continue;
         }
         conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
-
         cout<<"epollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
 }
@@ -159,23 +165,25 @@ void handle_recv(int epfd, int fd, map<int, conn_state> &conn_state_map) {
 
     conn_state &fd_state = conn_state_map[fd];
 
-    int numbytes = recv(fd, temp_buf, sizeof(temp_buf) - 1, 0);
-    if(numbytes == -1) {
-        if(errno == EAGAIN || errno == EWOULDBLOCK) {
-            return;
-        } else {            
+    while(true) {
+        int numbytes = recv(fd, temp_buf, sizeof(temp_buf) - 1, 0);
+        
+        if(numbytes == -1) {
+            if(errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            }            
             close_connection(epfd, fd, conn_state_map);
             return;
         }
+        if(numbytes == 0) {
+            close_connection(epfd, fd, conn_state_map);
+            return;
+        };
+
+        fd_state.recv_buf.append(temp_buf, numbytes);
     }
-    //this means the request is done
-    if(numbytes == 0) {
-        close_connection(epfd, fd, conn_state_map);
-        return;
-    };
 
-    fd_state.recv_buf.append(temp_buf, numbytes);
-
+    //parse the buffer
     if(fd_state.header_end == string::npos) {
         size_t search_start;
 
@@ -235,28 +243,31 @@ void handle_recv(int epfd, int fd, map<int, conn_state> &conn_state_map) {
 void handle_send(int epfd, int fd, map<int, conn_state> &conn_state_map) {
     conn_state &fd_state = conn_state_map[fd];
 
-    size_t remaining = fd_state.send_buf.size() - fd_state.send_offset;
-    int sent = send(fd, fd_state.send_buf.c_str() + fd_state.send_offset, remaining, 0);
+    while(fd_state.send_offset < fd_state.send_buf.size()) {
+        size_t remaining = fd_state.send_buf.size() - fd_state.send_offset;
+        int sent = send(fd, fd_state.send_buf.c_str() + fd_state.send_offset, remaining, 0);
 
-    if(sent == -1) {
-        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+        if(sent == -1) {
+            if(errno == EAGAIN || errno == EWOULDBLOCK) {
+                return;
+            }
+            perror("send");
+
+            close_connection(epfd, fd, conn_state_map);
             return;
         }
-
-        perror("send");
-
-        close_connection(epfd, fd, conn_state_map);
-        return;
+        
+        if(sent == 0) {
+            perror("send");
+            close_connection(epfd, fd, conn_state_map);
+            return;
+        }
+        fd_state.send_offset += sent;
     }
 
-    fd_state.send_offset += sent;
-    
+        
     if(fd_state.send_offset == fd_state.send_buf.size()) {
-        close(fd);
-        conn_state_map.erase(fd);
-        if(epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
-            perror("epoll_ctl: deletion");
-        }
+        close_connection(epfd, fd, conn_state_map);
     }
 }
 
@@ -276,6 +287,11 @@ int main() {
     sockfd = get_listener_socket();
     if(sockfd == -1) {
         cerr<<"socket creation error"<<endl;
+        exit(1);
+    }
+
+    if(set_socket_to_non_blocking(sockfd) == -1) {
+        cerr<<"failed to set listener to non-blocking"<<endl;
         exit(1);
     }
 
@@ -309,7 +325,7 @@ int main() {
                 handle_new_connections(epfd, sockfd, conn_state_map);
                 continue;
             }
-            if(re & (EPOLLHUP | EPOLLERR)) {
+            if(re & (EPOLLHUP | EPOLLERR | EPOLLRDHUP)) {
                 close_connection(epfd, fd, conn_state_map);
                 continue;
             }else if(re & EPOLLIN) {

@@ -79,7 +79,6 @@ int get_listener_socket() {
 
 
     if((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
-        cout<<"Poll server"<<gai_strerror(rv)<<endl;
         exit(1);
     }
 
@@ -108,14 +107,12 @@ int get_listener_socket() {
     if(listen(listener, 10) == -1) {
         return -1;
     }
-    cout<<"Successfully got the listener socket"<<endl;
     return listener;
 
 }
 
 void add_to_pfds(vector<struct pollfd> &pfds, int newfd) {
     struct pollfd pfd;
-    cout<<"added to pfds"<<endl;
 
     pfd.fd = newfd;
     pfd.events = POLLIN;
@@ -126,13 +123,11 @@ void add_to_pfds(vector<struct pollfd> &pfds, int newfd) {
 }
 
 void del_from_pfds(vector<struct pollfd> &pfds, int i) {
-    cout<<"removed from pfds"<<endl;
     pfds[i] = pfds.back();
     pfds.pop_back();
 }
 
 void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, conn_state> &conn_state_map) {
-    cout<<"Handling a new connection"<<endl;
     struct sockaddr_storage remoteaddr; //client addr
     socklen_t addrlen;
     int newfd;
@@ -153,12 +148,10 @@ void handle_new_connections(int listener, vector<struct pollfd> &pfds, map<int, 
         add_to_pfds(pfds, newfd);
         conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
 
-        cout<<"pollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
 }
 
 void handle_recv(int sockfd, int newfd, vector<struct pollfd>& pfds, map<int, conn_state> &conn_state_map, int pfd_index) {
-    cout<<"Handling a connection"<<endl;
     char temp_buf[MAXDATASIZE];
 
     conn_state &fd_state = conn_state_map[newfd];
@@ -273,14 +266,11 @@ int main() {
     add_to_pfds(pfds, sockfd);
     
    
-    cout<<"Server: waiting for connections"<<endl;
 
     while(1) {
         int ready_fds = poll(pfds.data(), pfds.size(), 1000);
-        cout<<"ready_fds: "<<ready_fds<<endl;
         if(ready_fds == -1) {
             perror("poll");
-            cout<<"Poll failed"<<endl;
             break;
         }
         if(ready_fds == 0) continue;

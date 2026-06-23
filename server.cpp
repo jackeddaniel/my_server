@@ -64,20 +64,17 @@ int main() {
     //loop through all the results and bind to the first we can
     for(p = servinfo; p != NULL; p = p->ai_next) {
         if((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-            cout<<"Socket building error"<<endl;
             perror("server: socket");
             continue;
         }
 
         if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
-            cout<<"error"<<endl;
             perror("setsockopt");
             exit(1);
         }
 
         if(bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
             close(sockfd);
-            cout<<"Bind error"<<endl;
             perror("server: bind");
             continue;
         }
@@ -88,12 +85,10 @@ int main() {
     freeaddrinfo(servinfo);
 
     if(p == NULL) {
-        cout<<"server failed to bind"<<endl;
         exit(1);
     }
 
     if(listen(sockfd, BACKLOG) == -1) {
-        cout<<"Error while listening"<<endl;
         perror("listen");
         exit(1);
     }
@@ -104,24 +99,20 @@ int main() {
     sa.sa_flags = SA_RESTART;
 
     if(sigaction(SIGCHLD, &sa, NULL) == -1) {
-        cout<<"Sigaction"<<endl;
         perror("sigaction");
         exit(1);
     }
     
-    cout<<"Server: waiting for connections"<<endl;
 
     while(1) {
         sin_size = sizeof(their_addr);
         new_fd = accept(sockfd, (struct sockaddr*)&their_addr, &sin_size);
         if(new_fd == -1) {
-            cout<<"Accept error"<<endl;
             perror("accept");
             continue;
         }
 
         inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr*)& their_addr), s, sizeof(s));
-        cout<<"Server got connection from: "<<s<<endl;
 
         int pid = fork();
         
@@ -173,12 +164,6 @@ int main() {
             }
 
             string response = build_response(resp);
-            cout<<"The message recieved from the browser"<<endl;
-            cout<<"The size of the message recieved is: "<<recv_str.size()<<" bytes"<<endl;
-            cout<<recv_str<<endl;
-            cout<<"=========================="<<endl;
-            cout<<endl;
-            cout<<"Sending the response"<<endl;
 
             size_t total_sent = 0;
             size_t response_len = response.size();

@@ -22,7 +22,6 @@ string html_to_string(const string& path) {
     ifstream file(path);
 
     if(!file.is_open()) {
-        cout<<"file not found"<<endl;
         return "";
     }
 
@@ -61,7 +60,6 @@ int path_builder(const string& req_path, string& path) {
     if(!valid_path(req_path)) return 0;
     string parent = "static";
     filesystem::path combined_path = parent + req_path;
-    cout<<combined_path<<endl;
     
     if(filesystem::exists(combined_path)) {
         path = combined_path;
@@ -80,7 +78,6 @@ string infer_content_type(const string& path) {
 
 
     string ext = path.substr(i);
-    cout<<ext<<endl;
     if(mime_types.find(ext) == mime_types.end()) return "";
 
     return mime_types[ext];
@@ -88,7 +85,6 @@ string infer_content_type(const string& path) {
 
 void test_func() {
     string s = html_to_string("index.html");
-    cout<<s;
 
 }
 /*

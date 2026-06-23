@@ -81,7 +81,6 @@ int get_listener_socket() {
 
 
     if((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
-        cout<<"Poll server"<<gai_strerror(rv)<<endl;
         exit(1);
     }
 
@@ -110,7 +109,6 @@ int get_listener_socket() {
     if(listen(listener, 10) == -1) {
         return -1;
     }
-    cout<<"Successfully got the listener socket"<<endl;
     return listener;
 
 }
@@ -124,7 +122,6 @@ void close_connection(int epfd, int fd, map<int, conn_state>& conn_state_map) {
 
 void handle_new_connections(int epfd, int listener, map<int, conn_state> &conn_state_map) {
     while(true) {
-        cout<<"Handling a new connection"<<endl;
         struct sockaddr_storage remoteaddr; //client addr
         socklen_t addrlen;
         int newfd;
@@ -155,12 +152,10 @@ void handle_new_connections(int epfd, int listener, map<int, conn_state> &conn_s
             continue;
         }
         conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
-        cout<<"epollserver: new connection from socket \n"<<inet_ntop2(&remoteaddr, remoteIP, sizeof(remoteIP))<<"\n"<<"the fd is: "<<newfd<<endl;
     }
 }
 
 void handle_recv(int epfd, int fd, map<int, conn_state> &conn_state_map) {
-    cout<<"Handling a connection"<<endl;
     char temp_buf[MAXDATASIZE];
 
     conn_state &fd_state = conn_state_map[fd];
@@ -278,7 +273,6 @@ int main() {
     //creating an epoll instance
     int epfd = epoll_create1(0); 
     if(epfd == -1) {
-        cout<<"Epoll creation error"<<endl;
         perror("epoll");
         exit(1);
     }
@@ -305,15 +299,12 @@ int main() {
 
     struct epoll_event events[MAX_EVENTS];
    
-    cout<<"Server: waiting for connections"<<endl;
 
     while(1) {
         int ready_fds = epoll_wait(epfd, events, MAX_EVENTS, -1);
 
-        cout<<"ready_fds: "<<ready_fds<<endl;
         if(ready_fds == -1) {
             perror("epoll wait");
-            cout<<"Poll failed"<<endl;
             break;
         }
         if(ready_fds == 0) continue;

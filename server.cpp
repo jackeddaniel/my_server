@@ -106,7 +106,7 @@ int get_listener_socket() {
 
     freeaddrinfo(ai);
 
-    if(listen(listener, 10) == -1) {
+    if(listen(listener, SOMAXCONN) == -1) {
         return -1;
     }
     return listener;

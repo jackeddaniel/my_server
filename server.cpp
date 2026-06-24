@@ -19,6 +19,7 @@
 
 #include <vector>
 #include <string>
+#include <unordered_map>
 
 #include "http.h"
 
@@ -29,7 +30,7 @@
 
 using namespace std;
 
-map<int, conn_state> conn_state_map;
+unordered_map<int, conn_state> conn_state_map;
 
 const char* inet_ntop2(void *addr, char *buf, size_t size) {
     struct sockaddr_storage *sas = (sockaddr_storage*)addr;
@@ -112,7 +113,7 @@ int get_listener_socket() {
     return listener;
 
 }
-void close_connection(int epfd, int fd, map<int, conn_state>& conn_state_map) {
+void close_connection(int epfd, int fd, unordered_map<int, conn_state>& conn_state_map) {
     if(epoll_ctl(epfd, EPOLL_CTL_DEL, fd, nullptr) == -1) {
         perror("epoll_ctl: deletion");
     }
@@ -120,7 +121,7 @@ void close_connection(int epfd, int fd, map<int, conn_state>& conn_state_map) {
     close(fd);
 }
 
-void handle_new_connections(int epfd, int listener, map<int, conn_state> &conn_state_map) {
+void handle_new_connections(int epfd, int listener, unordered_map<int, conn_state> &conn_state_map) {
     while(true) {
         struct sockaddr_storage remoteaddr; //client addr
         socklen_t addrlen;
@@ -155,7 +156,7 @@ void handle_new_connections(int epfd, int listener, map<int, conn_state> &conn_s
     }
 }
 
-void handle_recv(int epfd, int fd, map<int, conn_state> &conn_state_map) {
+void handle_recv(int epfd, int fd, unordered_map<int, conn_state> &conn_state_map) {
     char temp_buf[MAXDATASIZE];
 
     conn_state &fd_state = conn_state_map[fd];
@@ -235,7 +236,7 @@ void handle_recv(int epfd, int fd, map<int, conn_state> &conn_state_map) {
     }
 }
 
-void handle_send(int epfd, int fd, map<int, conn_state> &conn_state_map) {
+void handle_send(int epfd, int fd, unordered_map<int, conn_state> &conn_state_map) {
     conn_state &fd_state = conn_state_map[fd];
 
     while(fd_state.send_offset < fd_state.send_buf.size()) {

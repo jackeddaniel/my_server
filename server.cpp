@@ -152,10 +152,26 @@ void handle_new_connections(int epfd, int listener, unordered_map<int, conn_stat
             close(newfd);
             continue;
         }
-        conn_state_map[newfd] = {"", 0, string::npos, string::npos, "", 0,connection_state::READING};
+        conn_state_map[newfd] = {"", 0, string::npos, string::npos, false, "", 0,connection_state::READING};
     }
 }
 
+void reset_connection(int epfd, int fd, conn_state &fd_state) {
+    fd_state.recv_buf.clear();
+    fd_state.parse_offset = 0;
+    fd_state.header_end = string::npos;
+    fd_state.content_length = string::npos;
+    fd_state.send_buf.clear();
+    fd_state.send_offset = 0;
+    fd_state.state = connection_state::READING;
+
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = fd;
+    if(epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev) == -1) {
+        perror("epoll_ctl: mod (reset)");
+    }
+}
 void handle_recv(int epfd, int fd, unordered_map<int, conn_state> &conn_state_map) {
     char temp_buf[MAXDATASIZE];
 
@@ -214,17 +230,27 @@ void handle_recv(int epfd, int fd, unordered_map<int, conn_state> &conn_state_ma
         if(fd_state.recv_buf.size() >= total_expected) {
             fd_state.state = connection_state::SENDING;
             http_request rq = build_request(fd_state.recv_buf);
+            rq.keep_alive = (rq.version == "HTTP/1.1"); // HTTP/1.1 defaults to keep-alive conns
             http_response rp;
             string path;
 
+            if(rq.headers["Connection"] == "close") {
+                rq.keep_alive = false;
+            } else if(rq.headers["Connection"] == "keep-alive") {
+                rq.keep_alive = true;
+            }
+
+            fd_state.keep_alive = rq.keep_alive;
             if(path_builder(rq.path, path) == 0) {
-                rp = create_response(404, "", "text/html");
+                fd_state.keep_alive = false;
+                rp = create_response(404, "", "text/html", false);
             } else {
                 string body = html_to_string(path);
-                rp = create_response(200, body, infer_content_type(path));
+                rp = create_response(200, body, infer_content_type(path), fd_state.keep_alive);
             }
             string response = build_response(rp);
             fd_state.send_buf = response;
+
             //changing the interest of the pollfd 
             struct epoll_event ev;
             ev.events = EPOLLOUT;
@@ -263,7 +289,11 @@ void handle_send(int epfd, int fd, unordered_map<int, conn_state> &conn_state_ma
 
         
     if(fd_state.send_offset == fd_state.send_buf.size()) {
-        close_connection(epfd, fd, conn_state_map);
+        if(fd_state.keep_alive) {
+            reset_connection(epfd, fd, fd_state);
+        } else {
+            close_connection(epfd, fd, conn_state_map);
+        }
     }
 }
 

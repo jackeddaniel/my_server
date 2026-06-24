@@ -17,6 +17,7 @@ struct conn_state {
     size_t parse_offset;
     size_t header_end;
     size_t content_length;
+    bool keep_alive;
 
     string send_buf;
     size_t send_offset;
@@ -37,11 +38,13 @@ struct http_request {
     string req_method;
     string path;
     map<string, string> headers;
+    string version;
+    bool keep_alive;
     string body;
 };
 
 //http_helpers.cpp
-http_response create_response(int status_code, const string& body, const string& content_type);
+http_response create_response(int status_code, const string& body, const string& content_type, bool keep_alive);
 string build_response(const http_response& resp);
 http_request build_request(string req);
 void print_request(http_request req);

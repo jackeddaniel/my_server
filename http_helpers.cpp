@@ -28,6 +28,9 @@ http_request build_request(string req) {
                     request.req_method = chunk;
                 } else if(fl_counter == 1) {
                     request.path = chunk;
+                } else if(fl_counter == 2) {
+                    //the third token has the http version
+                    request.version = chunk;
                 } else { 
                     break;
                 }
@@ -69,7 +72,7 @@ http_request build_request(string req) {
     return request;
 }
 
-http_response create_response(int status_code, const string& body, const string& content_type) {
+http_response create_response(int status_code, const string& body, const string& content_type, bool keep_alive) {
     http_response response;
     if(status_code == 404) {
         response.status_code = status_code;
@@ -82,7 +85,12 @@ http_response create_response(int status_code, const string& body, const string&
     response.body = body;
     response.headers["Content-Type"] = content_type;
     response.headers["Content-length"] = to_string(body.size());
-    response.headers["Connection"] = "close";
+    if(keep_alive) {
+        response.headers["Connection"] = "keep-alive";
+    } else {
+        response.headers["Connection"] = "close";
+    }
+
     return response;
 }
 
@@ -127,7 +135,7 @@ void tester(string s) {
 void test() {
     cout<<"Testing responses"<<endl;
 
-    http_response dummy_res = create_response(200, "<html><body>hello world</body></html>", "text/html");
+    http_response dummy_res = create_response(200, "<html><body>hello world</body></html>", "text/html", true);
 
     string s = build_response(dummy_res);
     cout<<s<<endl;
